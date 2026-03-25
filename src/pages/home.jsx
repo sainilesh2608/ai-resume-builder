@@ -176,7 +176,7 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-goog-api-key": "AIzaSyAA6DQltUIZo5X8FuspirCPVJ5AeK2sDeM",
+            "X-goog-api-key": import.meta.env.VITE_GEMINI_API_KEY,
           },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
         }
