@@ -1,13 +1,13 @@
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
-const PdfParse = require("pdf-parse");
+const pdfParse = require("pdf-parse"); // ✅ FIXED
 const mammoth = require("mammoth");
 const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000; // ✅ FIXED
 
 // Middleware
 app.use(cors());
@@ -39,7 +39,7 @@ function extractTextFromPDF(filePath) {
         return reject(new Error("PDF read error: " + err.message));
       }
       
-      PdfParse(dataBuffer)
+      pdfParse(dataBuffer) // ✅ FIXED
         .then(function(data) {
           resolve(data.text);
         })
@@ -95,7 +95,6 @@ app.post("/api/parse-resume", upload.single("file"), function(req, res) {
   }
 
   extractionPromise.then(function(extractedText) {
-    // Clean up uploaded file
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -106,7 +105,6 @@ app.post("/api/parse-resume", upload.single("file"), function(req, res) {
       message: "Resume parsed successfully",
     });
   }).catch(function(error) {
-    // Clean up file on error
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -123,11 +121,12 @@ app.get("/api/health", function(req, res) {
   res.json({ status: "Backend is running" });
 });
 
-// Start server
-app.listen(PORT, function() {
-  console.log("✅ Resume Parser Backend running on http://localhost:" + PORT);
-  console.log("📁 Upload endpoint: POST http://localhost:" + PORT + "/api/parse-resume");
-});
+// Root route
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");
+});
+
+// Start server
+app.listen(PORT, function() {
+  console.log("✅ Resume Parser Backend running on port " + PORT);
 });
