@@ -116,7 +116,7 @@ export default function HomePage() {
       formDataToSend.append("file", file);
 
       // Send to backend for parsing
-      const response = await fetch("http://localhost:5000/api/parse-resume", {
+      const response = await fetch("https://ai-resume-builder-0tv3.onrender.com/api/parse-resume", {
         method: "POST",
         body: formDataToSend,
       });
