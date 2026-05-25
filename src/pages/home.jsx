@@ -3,6 +3,9 @@ import "./home.css";
 
 const STEPS = ["Details", "Job Info", "Resume", "Generate"];
 
+// API base URL: use environment variable for production, or default to relative URL for dev
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+
 function ResultCard({ icon, iconClass, name, desc, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -69,6 +72,7 @@ export default function HomePage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [parsedResponse, setParsedResponse] = useState(null);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     companyName: "",
     applyingAs: "",
@@ -112,11 +116,12 @@ export default function HomePage() {
 
     try {
       setLoading(true);
+      setError(null);
       const formDataToSend = new FormData();
       formDataToSend.append("file", file);
 
       // Send to backend for parsing
-      const response = await fetch("https://ai-resume-builder-0tv3.onrender.com/api/parse-resume", {
+      const response = await fetch(`${API_BASE}/api/parse-resume`, {
         method: "POST",
         body: formDataToSend,
       });
@@ -129,13 +134,13 @@ export default function HomePage() {
       const result = await response.json();
       if (result.success) {
         setFormData({ ...formData, resume: result.text });
-        alert("✅ Resume uploaded and parsed successfully!");
+        setError(null);
       } else {
         throw new Error(result.error || "Failed to parse resume");
       }
     } catch (error) {
       console.error("Error uploading resume:", error);
-      alert(`❌ Error: ${error.message}`);
+      setError(`Resume upload failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -145,6 +150,7 @@ export default function HomePage() {
     if (!formData.companyName || !formData.jobDescription) return;
     setLoading(true);
     setParsedResponse(null);
+    setError(null);
 
     const prompt = `You are a professional career coach and resume optimization expert.
 Your task is to generate a personalized cover letter, improve the resume content, and provide an ATS analysis.
@@ -170,26 +176,33 @@ Extract important keywords from the job description. List which are in the resum
 Provide a rough ATS match score. Explain reasoning briefly.`;
 
     try {
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": import.meta.env.VITE_GEMINI_API_KEY,
-          },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        }
-      );
+      const res = await fetch(`${API_BASE}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const errorMsg = typeof err.error === 'string' ? err.error : JSON.stringify(err);
+        throw new Error(errorMsg || `Generate request failed (${res.status})`);
+      }
+
       const result = await res.json();
-      const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      setParsedResponse(parseResponse(text));
+      const text = result?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (!text) {
+        throw new Error("No content received from API");
+      }
+      const parsed = parseResponse(text);
+      setParsedResponse(parsed);
+      setError(null);
       setTimeout(
         () => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
         100
       );
     } catch (e) {
-      console.error(e);
+      console.error('Generate error:', e);
+      setError(`❌ Generation failed: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -406,6 +419,39 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
           )}
         </div>
 
+        {/* ── Error Panel ── */}
+        {error && (
+          <div style={{
+            marginTop: "20px",
+            padding: "16px",
+            borderRadius: "8px",
+            backgroundColor: "#fee",
+            borderLeft: "4px solid #f66",
+            color: "#c33",
+            fontFamily: "system-ui, sans-serif",
+            fontSize: "14px",
+            lineHeight: "1.5"
+          }}>
+            <strong>⚠️ Error</strong>
+            <div style={{ marginTop: "8px" }}>{error}</div>
+            <button
+              onClick={() => setError(null)}
+              style={{
+                marginTop: "12px",
+                padding: "6px 12px",
+                border: "none",
+                borderRadius: "4px",
+                background: "#f66",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "12px"
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* ── Loading ── */}
         {loading && (
           <div className="rb-loading">
@@ -423,7 +469,7 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
             <div className="rb-divider">✦</div>
             <div className="rb-results-header">
               <h2 className="rb-results-title">Your <em>AI Results</em></h2>
-              <p className="rb-results-sub">Click each section to expand</p>
+              <p className="rb-results-sub">Review your personalized recommendations below</p>
             </div>
 
             <ResultCard
@@ -432,7 +478,9 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
               desc={`Personalised for ${formData.companyName} · ${formData.coverLetterTone} tone`}
               defaultOpen
             >
-              {parsedResponse.coverLetter}
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.6", fontFamily: "system-ui, sans-serif" }}>
+                {parsedResponse.coverLetter || "No cover letter generated"}
+              </div>
             </ResultCard>
 
             <ResultCard
@@ -440,7 +488,9 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
               name="Updated Resume Content"
               desc="ATS-optimised bullet points & summary"
             >
-              {parsedResponse.resumeContent}
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.6", fontFamily: "system-ui, sans-serif" }}>
+                {parsedResponse.resumeContent || "No resume content generated"}
+              </div>
             </ResultCard>
 
             <ResultCard
@@ -448,7 +498,9 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
               name="Keyword Match Analysis"
               desc="Missing & matching keywords from the job description"
             >
-              {parsedResponse.keywordAnalysis}
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.6", fontFamily: "system-ui, sans-serif" }}>
+                {parsedResponse.keywordAnalysis || "No keyword analysis generated"}
+              </div>
             </ResultCard>
 
             <ResultCard
@@ -457,7 +509,9 @@ Provide a rough ATS match score. Explain reasoning briefly.`;
               desc="Estimated compatibility with applicant tracking systems"
             >
               <ATSGauge score={parsedResponse.atsScore} />
-              {parsedResponse.atsScore}
+              <div style={{ marginTop: "16px", whiteSpace: "pre-wrap", lineHeight: "1.6", fontFamily: "system-ui, sans-serif" }}>
+                {parsedResponse.atsScore || "No ATS score generated"}
+              </div>
             </ResultCard>
           </div>
         )}
